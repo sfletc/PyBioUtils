@@ -1,6 +1,3 @@
-Here's a basic `README.md` file template for your project:
-
-```markdown
 # PyBioUtils
 
 PyBioUtils is a Python package that provides tools for DNA sequence manipulation. This package includes three main classes: `RefSeq`, `DNA`, and `RandomSeqGen`.
