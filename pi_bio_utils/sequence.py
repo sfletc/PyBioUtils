@@ -47,7 +47,9 @@ class RefSeq(dict):
                 if seq:  # Check if the sequence is not empty.
                     self[header] = seq
 
-    def load_multiple_alignment(self, in_file, start=None, end=None):
+    def load_multiple_alignment(
+        self, in_file, start=None, end=None, truncate_header=False
+    ):
         """
         Load a multiple sequence alignment file and slice sequences between
         start and end positions, while removing dashes.
@@ -56,11 +58,11 @@ class RefSeq(dict):
             in_file (str): Path to FASTA-formatted multiple sequence alignment file.
             start (int, optional): The starting position to slice the sequence. 1-indexed.
             end (int, optional): The ending position to slice the sequence. 1-indexed.
+            truncate_header (bool, optional): If True, truncate the header at the first space.
 
         Note:
             If start and end are provided, the slice is inclusive.
         """
-        #TODO: write tests
         if in_file.endswith(".gz"):
             file_opener = gzip.open
         else:
@@ -87,6 +89,8 @@ class RefSeq(dict):
                             self[header] = seq
                         sequence_lines = []
                     header = line[1:]
+                    if truncate_header:
+                        header = header.split(" ")[0]
                 else:
                     sequence_lines.append(line)
 
