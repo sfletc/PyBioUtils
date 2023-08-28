@@ -17,16 +17,16 @@ class RefSeq(dict):
     def load_ref_file(self, in_file):
         """
         Load a FASTA-formatted reference file. RNA is converted to DNA.
-        
+
         Args:
             in_file (str): Path to FASTA formatted reference file (compressed or uncompressed).
         """
-        if in_file.endswith('.gz'):
+        if in_file.endswith(".gz"):
             file_opener = gzip.open
         else:
             file_opener = open
 
-        with file_opener(in_file, 'rt') as f:
+        with file_opener(in_file, "rt") as f:
             header = ""
             sequence_lines = []
             for line in f:
@@ -45,6 +45,62 @@ class RefSeq(dict):
             if header and sequence_lines:
                 seq = DNA("".join(sequence_lines)).u_to_t()
                 if seq:  # Check if the sequence is not empty.
+                    self[header] = seq
+
+    def load_multiple_alignment(self, in_file, start=None, end=None):
+        """
+        Load a multiple sequence alignment file and slice sequences between
+        start and end positions, while removing dashes.
+
+        Args:
+            in_file (str): Path to FASTA-formatted multiple sequence alignment file.
+            start (int, optional): The starting position to slice the sequence. 1-indexed.
+            end (int, optional): The ending position to slice the sequence. 1-indexed.
+
+        Note:
+            If start and end are provided, the slice is inclusive.
+        """
+        #TODO: write tests
+        if in_file.endswith(".gz"):
+            file_opener = gzip.open
+        else:
+            file_opener = open
+
+        with file_opener(in_file, "rt") as f:
+            header = ""
+            sequence_lines = []
+            for line in f:
+                line = line.strip()
+                if line == "":
+                    pass
+                elif line[0] == ">":
+                    if header and sequence_lines:
+                        seq = DNA("".join(sequence_lines))
+                        if start is not None and end is not None:
+                            seq = seq[start - 1 : end]
+                        elif start is not None:
+                            seq = seq[start - 1 :]
+                        elif end is not None:
+                            seq = seq[:end]
+                        seq = DNA(seq.replace("-", ""))
+                        if seq:
+                            self[header] = seq
+                        sequence_lines = []
+                    header = line[1:]
+                else:
+                    sequence_lines.append(line)
+
+            # Add the final sequence
+            if header and sequence_lines:
+                seq = DNA("".join(sequence_lines))
+                if start is not None and end is not None:
+                    seq = seq[start - 1 : end]
+                elif start is not None:
+                    seq = seq[start - 1 :]
+                elif end is not None:
+                    seq = seq[:end]
+                seq = DNA(seq.replace("-", ""))
+                if seq:
                     self[header] = seq
 
     def seq_stats(self):
@@ -115,22 +171,22 @@ tab = str.maketrans("ACTG", "TGAC")
 
 class DNA(str):
     """
-    A class for DNA strings based on Python's built-in string class. 
-    
+    A class for DNA strings based on Python's built-in string class.
+
     Attributes:
         str: The parent class for storing DNA sequences.
-        
-    The DNA class inherits all string methods but returns DNA objects instead of strings where applicable. 
+
+    The DNA class inherits all string methods but returns DNA objects instead of strings where applicable.
     The class ensures the DNA sequence is uppercase and provides additional methods specific to DNA sequences.
     """
 
     def __new__(cls, content):
         """
         Create a new DNA instance with uppercase content.
-        
+
         Args:
             content (str): The DNA sequence to store in the object.
-            
+
         Returns:
             DNA: A new DNA object with uppercase content.
         """
@@ -139,10 +195,10 @@ class DNA(str):
     def __getitem__(self, item):
         """
         Retrieve an item or slice from the DNA object.
-        
+
         Args:
             item (int, slice): The index or slice to retrieve.
-            
+
         Returns:
             DNA: The item or slice as a DNA object.
         """
@@ -151,10 +207,10 @@ class DNA(str):
     def __add__(self, item):
         """
         Concatenate a string or DNA object to the DNA object.
-        
+
         Args:
             item (str, DNA): The string or DNA object to concatenate.
-            
+
         Returns:
             DNA: A new DNA object containing the concatenated sequence.
         """
@@ -163,11 +219,11 @@ class DNA(str):
     def split(self, sep=None, maxsplit=-1):
         """
         Split the DNA sequence by a separator.
-        
+
         Args:
             sep (str, optional): The separator to split by. If None, split by whitespace. Defaults to None.
             maxsplit (int, optional): The maximum number of splits. Defaults to -1, which means no limit.
-                
+
         Returns:
             list: A list of DNA objects representing the split sequence.
         """
@@ -176,7 +232,7 @@ class DNA(str):
     def u_to_t(self):
         """
         Replace all instances of uracil (U) with thymine (T) in the DNA sequence.
-        
+
         Returns:
             DNA: A new DNA object with uracil replaced by thymine.
         """
@@ -185,10 +241,10 @@ class DNA(str):
     def reverse_complement(self):
         """
         Return the reverse complement of the DNA sequence.
-        
+
         Returns:
             DNA: A new DNA object representing the reverse complement of the sequence.
-            
+
         Note:
             The reverse complement is formed by reversing the DNA sequence and replacing each base with its complement.
         """
@@ -197,7 +253,7 @@ class DNA(str):
     def canonicalise(self):
         """
         Return the lexicographically smaller of the DNA sequence and its reverse complement.
-        
+
         Returns:
             DNA: The lexicographically smaller DNA object between the original sequence and its reverse complement.
         """
@@ -211,24 +267,25 @@ class DNA(str):
 class RandomSeqGen:
     """
     A class for generating random DNA sequences.
-    
+
     This class provides static methods for generating DNA sequences with specified characteristics, such as GC content.
     """
+
     @staticmethod
     def nonspecific_dsrna(length, gc_content=0.4):
         """
         Generate a non-specific double-stranded RNA (dsRNA) sequence with a specified length and GC content.
-        
+
         Args:
             length (int): The length of the dsRNA sequence to generate.
             gc_content (float, optional): The desired GC content as a value between 0 and 1. Defaults to 0.4.
-            
+
         Returns:
             str: The generated dsRNA sequence.
-            
+
         Raises:
             ValueError: Raised if it's impossible to generate a sequence with exactly the given length and GC content.
-            
+
         Note:
             The function creates a dsRNA sequence with the given GC content by calculating the number of G, C, A, and T bases.
             It then shuffles the sequence randomly.
