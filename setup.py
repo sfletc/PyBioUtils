@@ -1,20 +1,22 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='py_bio_utils',
-    version='0.1.0',
+    version='0.1.2',
     description='DNA sequence manipulation tools',
+    long_description=open('README.md').read(),
+    long_description_content_type='text/markdown',
     author='Stephen Fletcher',
     author_email='steveofbrisbane@gmail.com',
     license='MIT',
     url='https://github.com/sfletc/PyBioUtils',
-    packages=['pi_bio_utils'],
+    packages=find_packages(),  # Automatically discover and include all packages in the package directory
     install_requires=[
         'numpy>=1.20.0',
-        'textwrap3>=0.9.2', # note that the 'textwrap' module is part of Python's standard library, so we are using 'textwrap3' here
+        'textwrap3>=0.9.2',
     ],
     extras_require={
-        'gzip_support': ['gzip-reader>=0.1.0'] # optional, in case there is a separate package needed for gzip support
+        'gzip_support': ['gzip-reader>=0.1.0']
     },
     classifiers=[
         'Development Status :: 3 - Alpha',
@@ -26,4 +28,5 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
     ],
+    python_requires='>=3.6',
 )
