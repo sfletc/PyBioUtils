@@ -307,3 +307,48 @@ class RandomSeqGen:
         random.shuffle(seq)
         rand_seq = "".join(seq)
         return rand_seq
+
+class BigWigHelper:
+    def __init__(self, in_csv):
+        """
+        Initialize the BigWigHelper class with the input file path and read the data.
+        
+        Parameters:
+        - in_csv: str, path to the input CSV file. Expected format: "chromosome,length"
+        """
+        self.in_csv = in_csv
+        self.results = {}
+        
+        try:
+            with open(self.in_csv, 'r') as f_in:
+                next(f_in)  # skip header
+                for line in f_in:
+                    parts = line.split(",")
+                    chrom = parts[0]
+                    length = int(parts[1])  # convert to integer, assuming length is an integer
+                    self.results.setdefault(chrom, length)
+        except FileNotFoundError:
+            print(f"File {self.in_csv} not found.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+    
+    def write_sorted(self, out_txt):
+        """
+        Sorts the chromosome names and their lengths, and writes the sorted data to a TXT file.
+        
+        Parameters:
+        - out_txt: str, path to the output TXT file.
+        
+        Returns:
+        None
+        """
+        sorted_dict = dict(sorted(self.results.items()))
+        
+        try:
+            with open(out_txt, 'w') as f_out:
+                for k, v in sorted_dict.items():
+                    f_out.write(f"{k}\t{v}\n")
+        except FileNotFoundError:
+            print(f"File {out_txt} not found.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
