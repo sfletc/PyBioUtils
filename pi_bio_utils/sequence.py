@@ -354,3 +354,81 @@ class BigWigHelper:
             print(f"File {out_txt} not found.")
         except Exception as e:
             print(f"An error occurred: {e}")
+
+class ReadLengthDistribution:
+    def __init__(self, treatment_to_files, min_len, max_len):
+        self.treatment_to_files = treatment_to_files
+        self.min_len = min_len
+        self.max_len = max_len
+        self.all_counts = defaultdict(list)
+
+        # Calculate counts automatically when a new instance is created
+        self.calculate_counts()
+
+    def calculate_counts(self):
+        for treatment, fastq_gz_paths in self.treatment_to_files.items():
+            for fastq_gz_path in fastq_gz_paths:
+                count_by_length = Counter()
+                total_reads_in_range = 0
+
+                with gzip.open(fastq_gz_path, 'rt') as f:
+                    while True:
+                        identifier = f.readline().strip()
+                        sequence = f.readline().strip()
+                        plus = f.readline().strip()
+                        quality = f.readline().strip()
+
+                        if not identifier:
+                            break
+
+                        read_length = len(sequence)
+
+                        if self.min_len <= read_length <= self.max_len:
+                            total_reads_in_range += 1
+                            count_by_length[read_length] += 1
+
+                if total_reads_in_range > 0:
+                    for read_length in count_by_length:
+                        count_by_length[read_length] = (count_by_length[read_length] / total_reads_in_range) * 1e6
+
+                self.all_counts[treatment].append(count_by_length)
+
+    def plot(self):
+        plt.figure(figsize=(12, 8))
+
+        color_palette = sns.color_palette("bright", len(self.all_counts))
+        sns.set_palette(color_palette)
+
+        marker_styles = ['o', 's', 'v', '^', '<', '>', 'p', 'P', '*', 'h', 'H', 'D', 'd', 'X']
+
+        all_lengths = set()
+
+        for idx, (treatment, list_of_counts) in enumerate(self.all_counts.items()):
+            aggregate_counts = defaultdict(list)
+
+            for counts in list_of_counts:
+                for read_length, count in counts.items():
+                    aggregate_counts[read_length].append(count)
+                    all_lengths.add(read_length)
+
+            mean_counts = {}
+            sem_counts = {}
+            for read_length, counts in aggregate_counts.items():
+                mean_counts[read_length] = np.mean(counts)
+                sem_counts[read_length] = np.std(counts) / np.sqrt(len(counts))
+
+            sorted_lengths = sorted(mean_counts.keys())
+            sorted_means = [mean_counts[length] for length in sorted_lengths]
+            sorted_sems = [sem_counts[length] for length in sorted_lengths]
+
+            marker = marker_styles[idx % len(marker_styles)]
+
+            plt.errorbar(sorted_lengths, sorted_means, yerr=sorted_sems,
+                         label=treatment, color=color_palette[idx], marker=marker)
+
+        plt.xticks(sorted(all_lengths))
+        plt.xlabel("Read Length")
+        plt.ylabel("Reads Per Million (RPM)")
+        plt.title("Read Length Distribution by Treatment")
+        plt.legend()
+        plt.show()
