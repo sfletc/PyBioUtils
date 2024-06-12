@@ -1,147 +1,67 @@
 import gzip
 from Bio import SeqIO
-import pandas as pd
-import matplotlib.pyplot as plt
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-from Bio.SeqIO import write
 import os
-import sys
+import numpy as np
+import matplotlib.pyplot as plt
 
-def parse_fastq(file_path):
-    sequences = {}
+def read_fastq(file_path):
+    read_counts = {}
     with gzip.open(file_path, "rt") as handle:
         for record in SeqIO.parse(handle, "fastq"):
             seq = str(record.seq)
-            if seq in sequences:
-                sequences[seq] += 1
+            if seq in read_counts:
+                read_counts[seq] += 1
             else:
-                sequences[seq] = 1
-    return sequences
+                read_counts[seq] = 1
+    return read_counts
 
-# def parse_fastq_files(file_paths):
-#     all_sequences = []
-#     for file_path in file_paths:
-#         sequences = parse_fastq(file_path)
-#         for seq, count in sequences.items():
-#             all_sequences.append({'sequence': seq, 'count': count, 'file': os.path.basename(file_path)})
-#     return pd.DataFrame(all_sequences)
+def process_files(file_list):
+    all_counts = {}
+    for file_path in file_list:
+        counts = read_fastq(file_path)
+        file_name = os.path.basename(file_path)
+        all_counts[file_name] = counts
+    return all_counts
 
-def normalize_rpm(sequences_df):
-    total_reads = sequences_df['count'].sum()
-    sequences_df['normalized'] = sequences_df['count'] / total_reads * 1e6
-    return sequences_df
+def calculate_tc_scaling_factors(all_counts):
+    total_counts = {file_name: sum(counts.values()) for file_name, counts in all_counts.items()}
+    average_total_count = sum(total_counts.values()) / len(total_counts)
+    scaling_factors = {file_name: total / average_total_count for file_name, total in total_counts.items()}
+    return scaling_factors
 
-def normalize_median(sequences_df):
-    median_count = sequences_df['count'].median()
-    sequences_df['normalized'] = sequences_df['count'] / median_count
-    return sequences_df
+def calculate_uq_scaling_factors(all_counts):
+    upper_quartiles = {}
+    for file_name, counts in all_counts.items():
+        nonzero_counts = [count for count in counts.values() if count > 0]
+        upper_quartile = np.percentile(nonzero_counts, 75)
+        upper_quartiles[file_name] = upper_quartile
+    average_upper_quartile = sum(upper_quartiles.values()) / len(upper_quartiles)
+    scaling_factors = {file_name: uq / average_upper_quartile for file_name, uq in upper_quartiles.items()}
+    return scaling_factors
 
-def normalize_quantile(sequences_df):
-    ranks = sequences_df['count'].rank(method='min')
-    sorted_counts = sequences_df['count'].sort_values().values
-    quantile_normalized_counts = [sorted_counts[int(rank - 1)] for rank in ranks]
-    sequences_df['normalized'] = quantile_normalized_counts
-    return sequences_df
+def normalize_counts(all_counts, scaling_factors):
+    normalized_counts = {}
+    for file_name, counts in all_counts.items():
+        normalized_counts[file_name] = {read: count / scaling_factors[file_name] for read, count in counts.items()}
+    return normalized_counts
 
-def normalize_upper_quartile(sequences_df):
-    upper_quartile = sequences_df['count'].quantile(0.75)
-    sequences_df['normalized'] = sequences_df['count'] / upper_quartile
-    return sequences_df
+def calculate_median_scaling_factors(all_counts):
+    medians = {}
+    for file_name, counts in all_counts.items():
+        nonzero_counts = [count for count in counts.values() if count > 0]
+        median = np.median(nonzero_counts)
+        medians[file_name] = median
+    average_median = sum(medians.values()) / len(medians)
+    scaling_factors = {file_name: median / average_median for file_name, median in medians.items()}
+    return scaling_factors
 
-def write_fasta(file_path, sequences_df):
-    sequences_df = sequences_df.sort_values(by='normalized', ascending=False).reset_index(drop=True)
-    records = []
-    for index, row in sequences_df.iterrows():
-        header = f"read_{index+1}-{row['normalized']:.2f}"
-        sequence = row['sequence']
-        record = SeqRecord(Seq(sequence), id=header, description="")
-        records.append(record)
-    write(records, file_path, "fasta")
-
-def plot_distribution(data, title, output_dir):
-    plt.figure(figsize=(10, 6))
-
-    # Plot before normalization
-    for file_name, data in data.items():
-        sorted_counts = data['count'].sort_values()
-        plt.plot(sorted_counts.values, label=f'Raw counts {file_name}')
-    
-    plt.xlabel('Read Rank')
-    plt.ylabel('Read Count')
-    plt.yscale('log')
-    plt.title(title)
-    plt.legend()
-    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
-    plt.savefig(os.path.join(output_dir, "before_normalization.png"), bbox_inches='tight', facecolor='white')
-    plt.show()
-    plt.close()
-
-
-def process_file(file_path, all_sequences):
-    sequences = parse_fastq(file_path)
-    for seq, count in sequences.items():
-        all_sequences.append({'sequence': seq, 'count': count, 'file': os.path.basename(file_path)})
-    return sequences
-
-def apply_rpm_normalization(file_paths, output_dir):
-    before_data = {}
-    after_data = {}
-    for file_path in file_paths:
-        file_name = os.path.basename(file_path).replace('.fastq.gz', '').replace('.fq.gz', '')
-        sequences_df = pd.DataFrame(parse_fastq(file_path).items(), columns=['sequence', 'count'])
-        before_data[file_name] = sequences_df.copy()
-        sequences_df = normalize_rpm(sequences_df)
-        after_data[file_name] = sequences_df
-        output_file = os.path.join(output_dir, f"{file_name}_normalized.fasta")
-        write_fasta(output_file, sequences_df)
-    return before_data, after_data
-
-def apply_combined_normalization(file_paths, sequences_df, normalization_method, output_dir):
-    before_data = {}
-    after_data = {}
-
-    # Non-RPM normalization
-    if normalization_method == "median":
-        sequences_df = normalize_median(sequences_df)
-    elif normalization_method == "quantile":
-        sequences_df = normalize_quantile(sequences_df)
-    elif normalization_method == "upper_quartile":
-        sequences_df = normalize_upper_quartile(sequences_df)
-    else:
-        raise ValueError("Unsupported normalization method")
-
-    # Split and write to individual FASTA files
-    for file_path in file_paths:
-        file_name = os.path.basename(file_path).replace('.fastq.gz', '').replace('.fq.gz', '')
-        file_sequences_df = sequences_df[sequences_df['file'] == file_name].copy()
-        before_data[file_name] = file_sequences_df.copy()
-        after_data[file_name] = file_sequences_df
-        output_file = os.path.join(output_dir, f"{file_name}_normalized.fasta")
-        write_fasta(output_file, file_sequences_df)
-
-    return before_data, after_data
-
-def main(input_files, normalization_method, output_dir):
-    # Split the comma-separated list of input files
-    file_paths = input_files.split(',')
-    
-    # Ensure the output directory exists
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
-    if normalization_method == "RPM":
-        normalised = apply_rpm_normalization(file_paths, output_dir)
-    else:
-        # Data for combined normalization
-        all_sequences = []
-        for file_path in file_paths:
-            process_file(file_path, all_sequences)
-        
-        # Create dataframe from combined data
-        sequences_df = pd.DataFrame(all_sequences)
-        
-        normalised = apply_combined_normalization(file_paths, sequences_df, normalization_method, output_dir)
-
-    # Plot distributions
-    plot_distribution(normalised, output_dir)
+def plot_read_distribution(counts, title):
+    for file_name, read_counts in counts.items():
+        values = list(read_counts.values())
+        plt.figure(figsize=(10, 6))
+        plt.hist(values, bins=50, alpha=0.7)
+        plt.title(f"{title} - {file_name}")
+        plt.xlabel("Read Count")
+        plt.ylabel("Frequency")
+        plt.yscale('log')
+        plt.show()
