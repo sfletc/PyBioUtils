@@ -366,26 +366,43 @@ class ReadLengthDistribution:
         self.calculate_counts()
 
     def calculate_counts(self):
-        for treatment, fastq_gz_paths in self.treatment_to_files.items():
-            for fastq_gz_path in fastq_gz_paths:
+        for treatment, file_paths in self.treatment_to_files.items():
+            for file_path in file_paths:
                 count_by_length = Counter()
                 total_reads_in_range = 0
 
-                with gzip.open(fastq_gz_path, 'rt') as f:
-                    while True:
-                        identifier = f.readline().strip()
-                        sequence = f.readline().strip()
-                        plus = f.readline().strip()
-                        quality = f.readline().strip()
+                if file_path.endswith('.gz'):
+                    with gzip.open(file_path, 'rt') as f:
+                        while True:
+                            identifier = f.readline().strip()
+                            if not identifier:
+                                break
+                            sequence = f.readline().strip()
+                            plus = f.readline().strip()
+                            quality = f.readline().strip()
 
-                        if not identifier:
-                            break
+                            read_length = len(sequence)
 
-                        read_length = len(sequence)
+                            if self.min_len <= read_length <= self.max_len:
+                                total_reads_in_range += 1
+                                count_by_length[read_length] += 1
 
-                        if self.min_len <= read_length <= self.max_len:
-                            total_reads_in_range += 1
-                            count_by_length[read_length] += 1
+                elif file_path.endswith('.cfa'):
+                    with open(file_path, 'r') as f:
+                        while True:
+                            line = f.readline().strip()
+                            if not line:
+                                break
+                            if line.startswith('>'):
+                                header = line
+                                sequence = f.readline().strip()
+                                count = int(header.split('-')[-1])
+
+                                read_length = len(sequence)
+
+                                if self.min_len <= read_length <= self.max_len:
+                                    total_reads_in_range += count
+                                    count_by_length[read_length] += count
 
                 if total_reads_in_range > 0:
                     for read_length in count_by_length:
@@ -399,7 +416,8 @@ class ReadLengthDistribution:
         color_palette = sns.color_palette("bright", len(self.all_counts))
         sns.set_palette(color_palette)
 
-        marker_styles = ['o', 's', 'v', '^', '<', '>', 'p', 'P', '*', 'h', 'H', 'D', 'd', 'X']
+        # Use the same marker for all data points
+        marker = 'o'
 
         all_lengths = set()
 
@@ -421,10 +439,10 @@ class ReadLengthDistribution:
             sorted_means = [mean_counts[length] for length in sorted_lengths]
             sorted_sems = [sem_counts[length] for length in sorted_lengths]
 
-            marker = marker_styles[idx % len(marker_styles)]
-
+            # Plot with consistent dot marker, varying color
             plt.errorbar(sorted_lengths, sorted_means, yerr=sorted_sems,
-                         label=treatment, color=color_palette[idx], marker=marker)
+                        label=treatment, color=color_palette[idx], marker=marker,
+                        markersize=3, capsize=3, elinewidth=1)  # Adjusted dot size and error bar caps
 
         plt.xticks(sorted(all_lengths))
         plt.xlabel("Read Length")
