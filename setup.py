@@ -14,6 +14,7 @@ setup(
     install_requires=[
         'numpy>=1.20.0',
         'textwrap3>=0.9.2',
+        'biopython'
     ],
     extras_require={
         'gzip_support': ['gzip-reader>=0.1.0']

@@ -5,6 +5,8 @@ import random
 from collections import defaultdict, Counter
 import matplotlib.pyplot as plt
 import seaborn as sns
+from Bio import SeqIO
+import logomaker as lm
 
 class RefSeq(dict):
     """
@@ -449,4 +451,69 @@ class ReadLengthDistribution:
         plt.ylabel("Reads Per Million (RPM)")
         plt.title("Read Length Distribution by Treatment")
         plt.legend()
+        plt.show()
+
+class LogoFromCFA:
+    def __init__(self, fasta_file, read_length, indv_count_threshold=5):
+        """
+        Initialize LogoFromCFA with a FASTA file and thresholds.
+
+        Params:
+            fasta_file (str): Path to the input FASTA file.
+            count_threshold (int): Minimum count of reads to include. Default is 5.
+            length_threshold (int): Minimum length of reads to include. Default is 21.
+        """
+        self.fasta_file = fasta_file
+        self.indv_count_threshold = indv_count_threshold
+        self.read_length = read_length
+        self.filtered_reads = []
+
+    def load_and_filter_fasta(self):
+        """
+        Load the collapsed FASTA file and filter reads based on count and length thresholds.
+
+        Returns:
+            filtered_reads (list): List of filtered read sequences.
+        """
+        for record in SeqIO.parse(self.fasta_file, "fasta"):
+            header = record.id
+            sequence = str(record.seq)
+
+            try:
+                count = int(header.split('-')[1])
+            except (IndexError, ValueError):
+                continue
+
+            if count >= self.indv_count_threshold and len(sequence) == self.read_length:
+                self.filtered_reads.append(sequence)
+
+        return self.filtered_reads
+
+    def generate_logo_with_information(self, upper):
+        """
+        Generate a sequence logo using the information content from a list of sequences.
+
+        Params:
+            upper (float): The upper limit for the y-axis of the logo plot.
+        """
+        if not self.filtered_reads:
+            raise ValueError("No filtered reads available. Run load_and_filter_fasta() first.")
+
+        # Create a counts matrix from sequences
+        counts_mat = lm.alignment_to_matrix(self.filtered_reads)
+
+        # Transform counts matrix to information content matrix
+        info_mat = lm.transform_matrix(counts_mat, from_type='counts', to_type='information')
+
+        # Create a Logo object with the information content matrix
+        logo = lm.Logo(info_mat, fade_probabilities=True, color_scheme="classic")
+
+        # Set the figure size and labels
+        logo.style_spines(visible=False)
+        logo.style_spines(spines=['left', 'bottom'], visible=True)
+        logo.ax.set_ylim([0, upper])
+        logo.ax.set_ylabel('Information Content (bits)')
+        logo.ax.set_xlabel('Position')
+
+        # Show the logo
         plt.show()
