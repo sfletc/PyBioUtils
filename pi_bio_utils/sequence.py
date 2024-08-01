@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from Bio import SeqIO
 import logomaker as lm
+import modin.pandas as mpd
+from scram2Plot import utils, profilePlot as pp
 
 class RefSeq(dict):
     """
@@ -517,3 +519,80 @@ class LogoFromCFA:
 
         # Show the logo
         plt.show()
+
+
+class MicroRNAFinder:
+    def __init__(self, engine="modin", csv_path=None, reference=None):
+        self.engine = engine
+        self.csv_path = csv_path
+        self.reference =reference
+        self.df = None
+        self.fdf = None
+        self.dr = None
+
+    def load_csv(self):
+        if self.csv_path:
+            self.df = utils.ScramCSV(engine=self.engine)
+            self.df.load_csv(self.csv_path)
+        else:
+            raise ValueError("CSV path not provided.")
+
+    def subset_data(self, min_count=15, times_aligned_max=6):
+        if self.df:
+            self.fdf = self.df.subset_data(min_count=min_count, times_aligned_max=times_aligned_max)
+        else:
+            raise ValueError("DataFrame not loaded. Please load the CSV first.")
+
+    def calculate_min_free_energy(self, start, end):
+        if self.fdf:
+            self.fdf.calculate_min_free_energy(self.reference, start, end)
+        else:
+            raise ValueError("Filtered DataFrame not available. Please subset the data first.")
+
+    def remove_nearby_duplicates(self, distance=1):
+        if self.fdf is None:
+            raise ValueError("Filtered DataFrame not available. Please subset the data first.")
+        
+        result_df = mpd.DataFrame()
+        
+        for header, group_df in self.fdf.df.groupby('Header'):
+            group_df = group_df.sort_values(by=['Position'])
+            to_remove = []
+            prev_value = None
+            for index, row in group_df.iterrows():
+                if prev_value is not None:
+                    if abs(row['Position'] - prev_value) <= distance:
+                        to_remove.append(index)
+                prev_value = row['Position']
+            group_df = group_df.drop(to_remove)
+            result_df = mpd.concat([result_df, group_df])
+        
+        self.dr = result_df
+
+    def sort_and_plot(self, plot_range=200, plot_num = 10, siRNA_lens=[18, 19, 20, 21, 22,23,24], sec_structure=True, show_seq=True):
+        if self.dr is None:
+            raise ValueError("Duplicate-removed DataFrame not available. Please remove duplicates first.")
+        
+        sorted_df = self.dr.sort_values('Min_Free_Energy', ascending=True)
+        count=0
+        for _, row in sorted_df.iterrows():
+            if count > plot_num:
+                break
+            else:
+                try:
+                    plotter = pp.AlignmentPlot(
+                        self.csv_path.rsplit("_",1)[0],
+                        siRNA_lens,
+                        row.iloc[0],
+                        start=row.iloc[3] - plot_range,
+                        end=row.iloc[3] + plot_range,
+                        sec_structure=sec_structure,
+                        ref_file=self.reference,
+                        show_seq=show_seq
+                    )
+                    plotter.generate_plot()
+                    count+=1
+                except Exception as e:
+                    print("Failed to generate plot for row:")
+                    print(row)
+                    print(f"Error: {e}")
