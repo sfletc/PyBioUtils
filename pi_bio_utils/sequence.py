@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from Bio import SeqIO
 import logomaker as lm
+import pandas as pd
 import modin.pandas as mpd
 from scram2Plot import utils, profilePlot as pp
 
@@ -19,6 +20,11 @@ class RefSeq(dict):
 
     The format for storing reference sequences in the dictionary is {header: DNA(seq)}
     """
+
+    def __init__(self):
+        super().__init__()
+        self.query_sequences = None
+        self.kmer_results = None
 
     def load_ref_file(self, in_file):
         """
@@ -174,6 +180,68 @@ class RefSeq(dict):
         if total_bases == 0:
             return 0.0  # Return 0.0 if there are no bases to avoid division by zero.
         return round(gc_bases / total_bases, 2)
+
+    def load_and_compare_kmers(self, ref_file, query_file, kmer_length=21):
+        """
+        Load reference and query FASTA files, calculate kmers and their occurrences.
+        Stores results in class variables.
+
+        Args:
+            ref_file (str): Path to the reference FASTA file.
+            query_file (str): Path to the query FASTA file.
+            kmer_length (int): Length of the kmers to be calculated. Default is 21.
+        """
+        # Load reference sequences
+        self.load_ref_file(ref_file)
+
+        # Generate kmers for each reference sequence
+        ref_kmers = defaultdict(Counter)
+        for header, sequence in self.items():
+            for kmer in self.kmer(kmer_length):
+                ref_kmers[header].update([str(kmer)])
+
+        # Load query sequences
+        self.query_sequences = RefSeq()
+        self.query_sequences.load_ref_file(query_file)
+
+        # Check kmer occurrences in query sequences
+        self.kmer_results = defaultdict(lambda: defaultdict(int))
+        for query_header, query_seq in self.query_sequences.items():
+            for ref_header, kmers in ref_kmers.items():
+                for kmer in kmers:
+                    self.kmer_results[ref_header][kmer] += query_seq.count(kmer)
+
+    def display_kmer_comparison(self):
+        """
+        Display kmer comparison results showing how many kmers from each reference 
+        sequence appear in each query sequence.
+        """
+        if self.kmer_results is None or self.query_sequences is None:
+            print("No kmer comparison results available. Run load_and_compare_kmers first.")
+            return
+
+        results_data = []
+        for ref_header in self.kmer_results.keys():
+            row_data = []
+            ref_kmers = set(self.kmer_results[ref_header].keys())
+            
+            for query_header, query_seq in self.query_sequences.items():
+                kmer_count = 0
+                for kmer in ref_kmers:
+                    kmer_count += str(query_seq).count(kmer)
+                row_data.append(kmer_count)
+                
+            results_data.append(row_data)
+
+        df = pd.DataFrame(
+            results_data,
+            index=list(self.kmer_results.keys()),
+            columns=list(self.query_sequences.keys())
+        )
+
+        return df.style.background_gradient(cmap='YlOrRd')\
+                      .format("{:,}")\
+                      .set_caption("Number of kmer matches from reference in query sequences")
 
 
 tab = str.maketrans("ACTG", "TGAC")
@@ -596,3 +664,4 @@ class MicroRNAFinder:
                     print("Failed to generate plot for row:")
                     print(row)
                     print(f"Error: {e}")
+
